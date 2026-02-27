@@ -151,15 +151,18 @@ function CVEComponent() {
 <body>
 <h1>CVE Zafiyet Raporu</h1>
 <p class="meta">${date} tarihinde oluşturuldu &mdash; ${items.length} zafiyet</p>
-${items.map(item => `<div class="article">
+${items.map(item => {
+          const content = (item.turkish_description || item.original_description || '').replace(/\n/g, '<br>')
+          return `<div class="article">
   <span class="cveid">${item.cve_id || ''}</span>
   <span class="badge" style="background:${severityColor(item.severity)}">${item.severity || 'Bilinmiyor'}</span>
   ${item.cvss_score ? `<span class="score">CVSS: ${item.cvss_score}</span>` : ''}
   <span class="date">${item.published_date || ''}</span>
   <h3>${item.turkish_title || item.original_title || ''}</h3>
-  <div class="content">${(item.turkish_description || item.original_description || '').replace(/\\n/g, '<br>')}</div>
+  <div class="content">${content}</div>
   <a href="${item.link || ''}" target="_blank">Kaynağa Git &rarr;</a>
-</div>`).join('\\n')}
+</div>`
+        }).join('\n')}
 </body></html>`
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const url = URL.createObjectURL(blob)

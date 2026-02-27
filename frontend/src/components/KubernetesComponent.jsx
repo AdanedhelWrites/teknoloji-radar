@@ -149,12 +149,15 @@ function KubernetesComponent() {
 <body>
 <h1>Kubernetes Haberleri Raporu</h1>
 <p class="meta">${date} tarihinde oluşturuldu &mdash; ${items.length} haber</p>
-${items.map(item => `<div class="article">
+${items.map(item => {
+          const content = (item.turkish_description || item.original_description || '').replace(/\n/g, '<br>')
+          return `<div class="article">
   <span class="source">${item.source || ''}</span>${item.version ? `<span class="version">${item.version}</span>` : ''}<span class="date">${item.published_date || ''}</span>
   <h3>${item.turkish_title || item.original_title || ''}</h3>
-  <div class="content">${(item.turkish_description || item.original_description || '').replace(/\\n/g, '<br>')}</div>
+  <div class="content">${content}</div>
   <a href="${item.link || ''}" target="_blank">Kaynağa Git &rarr;</a>
-</div>`).join('\\n')}
+</div>`
+        }).join('\n')}
 </body></html>`
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const url = URL.createObjectURL(blob)
