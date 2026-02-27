@@ -121,12 +121,51 @@ function CVEComponent() {
     try {
       const response = await cveApi.exportCVEs()
       if (response.data.success) {
-        const blob = new Blob([JSON.stringify(response.data.data, null, 2)], 
-          { type: 'application/json' })
+        const items = response.data.data
+        const date = new Date().toLocaleDateString('tr-TR')
+        const severityColor = (s) => {
+          const colors = { 'Kritik': '#dc3545', 'Yüksek': '#fd7e14', 'Orta': '#ffc107', 'Düşük': '#28a745' }
+          return colors[s] || '#6c757d'
+        }
+        const html = `<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>CVE Zafiyet Raporu - ${date}</title>
+<style>
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; max-width: 960px; margin: 0 auto; padding: 2rem; }
+  h1 { color: #5b86a7; border-bottom: 2px solid #1a1a24; padding-bottom: 0.5rem; }
+  .meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  .article { background: #111118; border: 1px solid #1a1a24; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+  .article h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #e0e0e0; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; margin-right: 0.5rem; color: #fff; }
+  .article .date { color: #888; font-size: 0.8rem; }
+  .article .cveid { color: #5b86a7; font-weight: bold; font-size: 0.9rem; }
+  .article .content { margin-top: 0.75rem; line-height: 1.7; color: #ccc; }
+  .article a { color: #5b86a7; text-decoration: none; }
+  .article a:hover { text-decoration: underline; }
+  .score { font-weight: bold; font-size: 0.85rem; }
+  @media print { body { background: #fff; color: #000; } .article { border-color: #ddd; background: #f9f9f9; } .article h3, .article .content { color: #000; } h1 { color: #333; } }
+</style>
+</head>
+<body>
+<h1>CVE Zafiyet Raporu</h1>
+<p class="meta">${date} tarihinde oluşturuldu &mdash; ${items.length} zafiyet</p>
+${items.map(item => `<div class="article">
+  <span class="cveid">${item.cve_id || ''}</span>
+  <span class="badge" style="background:${severityColor(item.severity)}">${item.severity || 'Bilinmiyor'}</span>
+  ${item.cvss_score ? `<span class="score">CVSS: ${item.cvss_score}</span>` : ''}
+  <span class="date">${item.published_date || ''}</span>
+  <h3>${item.turkish_title || item.original_title || ''}</h3>
+  <div class="content">${(item.turkish_description || item.original_description || '').replace(/\\n/g, '<br>')}</div>
+  <a href="${item.link || ''}" target="_blank">Kaynağa Git &rarr;</a>
+</div>`).join('\\n')}
+</body></html>`
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `cve_entries_${new Date().toISOString().split('T')[0]}.json`
+        a.download = `cve_zafiyet_raporu_${new Date().toISOString().split('T')[0]}.html`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -310,7 +349,7 @@ function CVEComponent() {
                   className="flex-fill" 
                   size="sm"
                   onClick={handleExport}
-                   title="CVE verilerini JSON olarak indir"
+                   title="CVE zafiyetlerini HTML rapor olarak indir"
                 >
                   <FaFileExport className="me-1" />İndir
                 </Button>

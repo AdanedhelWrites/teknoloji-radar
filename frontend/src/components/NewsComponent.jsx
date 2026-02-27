@@ -114,12 +114,42 @@ function NewsComponent() {
     try {
       const response = await newsApi.exportNews()
       if (response.data.success) {
-        const blob = new Blob([JSON.stringify(response.data.data, null, 2)], 
-          { type: 'application/json' })
+        const items = response.data.data
+        const date = new Date().toLocaleDateString('tr-TR')
+        const html = `<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Siber Güvenlik Raporu - ${date}</title>
+<style>
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; max-width: 960px; margin: 0 auto; padding: 2rem; }
+  h1 { color: #5b86a7; border-bottom: 2px solid #1a1a24; padding-bottom: 0.5rem; }
+  .meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  .article { background: #111118; border: 1px solid #1a1a24; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+  .article h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #e0e0e0; }
+  .article .source { display: inline-block; background: #5b86a7; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; margin-right: 0.5rem; }
+  .article .date { color: #888; font-size: 0.8rem; }
+  .article .content { margin-top: 0.75rem; line-height: 1.7; color: #ccc; }
+  .article a { color: #5b86a7; text-decoration: none; }
+  .article a:hover { text-decoration: underline; }
+  @media print { body { background: #fff; color: #000; } .article { border-color: #ddd; background: #f9f9f9; } .article h3, .article .content { color: #000; } h1 { color: #333; } }
+</style>
+</head>
+<body>
+<h1>Siber Güvenlik Haberleri Raporu</h1>
+<p class="meta">${date} tarihinde oluşturuldu &mdash; ${items.length} haber</p>
+${items.map(item => `<div class="article">
+  <span class="source">${item.source || ''}</span><span class="date">${item.date || item.original_date || ''}</span>
+  <h3>${item.turkish_title || item.original_title || ''}</h3>
+  <div class="content">${(item.turkish_description || item.turkish_summary || '').replace(/\\n/g, '<br>')}</div>
+  <a href="${item.link || ''}" target="_blank">Kaynağa Git &rarr;</a>
+</div>`).join('\\n')}
+</body></html>`
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `cybersecurity_news_${new Date().toISOString().split('T')[0]}.json`
+        a.download = `siber_guvenlik_raporu_${new Date().toISOString().split('T')[0]}.html`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -233,7 +263,7 @@ function NewsComponent() {
                   className="flex-fill" 
                   size="sm"
                   onClick={handleExport}
-                   title="Siber güvenlik haberlerini JSON olarak indir"
+                   title="Siber güvenlik haberlerini HTML rapor olarak indir"
                 >
                   <FaFileExport className="me-1" />İndir
                 </Button>

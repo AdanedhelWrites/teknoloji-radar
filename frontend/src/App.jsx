@@ -25,7 +25,7 @@ function App() {
         <Container>
           <Navbar.Brand href="/">
             <FaTree className="me-2" />
-            Güncel Teknoloji Haberleri
+            Teknoloji Radar
           </Navbar.Brand>
           <Navbar.Toggle aria-controls="basic-navbar-nav" />
           <Navbar.Collapse id="basic-navbar-nav">
@@ -74,7 +74,7 @@ function App() {
 function HomePage() {
   return (
     <div className="text-center py-5">
-      <h1 className="display-4 mb-4">Güncel Teknoloji Haberleri</h1>
+      <h1 className="display-4 mb-4">Teknoloji Radar</h1>
       <p className="lead mb-5">
         Güncel siber güvenlik haberleri, CVE (Common Vulnerabilities and Exposures), 
         Kubernetes ve SRE (Site Reliability Engineering) güncellemelerini tek bir yerden takip edin.
@@ -87,11 +87,11 @@ function HomePage() {
               <FaNewspaper size={48} className="text-primary mb-3" />
               <h5 className="card-title">Siber Güvenlik</h5>
               <p className="card-text">
-                The Hacker News, Bleeping Computer, SecurityWeek ve daha fazlasından 
-                güncel siber güvenlik haberlerini takip edin.
+                5 kaynaktan siber güvenlik haberlerini çekin, Türkçeye çevrilmiş 
+                tam makale içeriklerini okuyun ve HTML rapor olarak indirin.
               </p>
               <NavLink to="/news" className="btn btn-primary">
-                Siber Güvenlik Görüntüle
+                Haberleri Görüntüle
               </NavLink>
             </div>
           </div>
@@ -101,13 +101,13 @@ function HomePage() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <FaShieldAlt size={48} className="text-danger mb-3" />
-              <h5 className="card-title">CVE</h5>
+              <h5 className="card-title">CVE Zafiyetleri</h5>
               <p className="card-text">
-                NVD, GitHub Advisory, Tenable gibi kaynaklardan son güvenlik 
-                açıklarını takip edin ve Türkçe açıklamaları okuyun.
+                5 kaynaktan güncel CVE zafiyetlerini çekin, CVSS şiddet seviyesine 
+                göre filtreleyin ve Türkçe açıklamalarını okuyun.
               </p>
               <NavLink to="/cve" className="btn btn-danger">
-                CVE Görüntüle
+                Zafiyetleri Görüntüle
               </NavLink>
             </div>
           </div>
@@ -119,11 +119,11 @@ function HomePage() {
               <FaDharmachakra size={48} className="text-info mb-3" />
               <h5 className="card-title">Kubernetes</h5>
               <p className="card-text">
-                Kubernetes Blog, GitHub Releases ve CNCF Blog'dan 
-                güncel Kubernetes haberlerini ve sürüm bilgilerini takip edin.
+                3 kaynaktan Kubernetes blog yazılarını, release notlarını ve 
+                CNCF haberlerini çekin, Türkçe olarak takip edin.
               </p>
               <NavLink to="/k8s" className="btn btn-info text-white">
-                Kubernetes Haberleri
+                Haberleri Görüntüle
               </NavLink>
             </div>
           </div>
@@ -135,11 +135,11 @@ function HomePage() {
               <FaServer size={48} className="text-success mb-3" />
               <h5 className="card-title">SRE</h5>
               <p className="card-text">
-                SRE Weekly ve InfoQ SRE'den güncel Site Reliability Engineering 
-                haberlerini ve en iyi uygulamaları takip edin.
+                5 kaynaktan Site Reliability Engineering haberlerini çekin, 
+                incident management ve DevOps içeriklerini Türkçe okuyun.
               </p>
               <NavLink to="/sre" className="btn btn-success">
-                SRE Haberleri
+                Haberleri Görüntüle
               </NavLink>
             </div>
           </div>
