@@ -1,0 +1,110 @@
+# ============================================
+# Celery Worker — Arka plan gorev isleyicisi
+# ============================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: teknoloji-worker
+  namespace: teknoloji-haberleri
+  labels:
+    app.kubernetes.io/name: teknoloji-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: teknoloji-haberleri
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: teknoloji-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: teknoloji-worker
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: teknoloji-haberleri-api:latest
+          command: ["celery", "-A", "cybernews", "worker", "-l", "info", "--concurrency=2"]
+          envFrom:
+            - configMapRef:
+                name: teknoloji-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: teknoloji-secret
+                  key: SECRET_KEY
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: teknoloji-secret
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: teknoloji-secret
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+# ============================================
+# Celery Beat — Periyodik gorev zamanlayici
+# ONEMLI: Beat her zaman 1 replica olmali!
+# ============================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: teknoloji-scheduler
+  namespace: teknoloji-haberleri
+  labels:
+    app.kubernetes.io/name: teknoloji-scheduler
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/part-of: teknoloji-haberleri
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Beat icin onemli — ayni anda 2 instance calismasini onler
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: teknoloji-scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: teknoloji-scheduler
+        app.kubernetes.io/component: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: teknoloji-haberleri-api:latest
+          command: ["celery", "-A", "cybernews", "beat", "-l", "info"]
+          envFrom:
+            - configMapRef:
+                name: teknoloji-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: teknoloji-secret
+                  key: SECRET_KEY
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: teknoloji-secret
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: teknoloji-secret
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

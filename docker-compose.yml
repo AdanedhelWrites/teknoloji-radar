@@ -1,0 +1,100 @@
+services:
+  # Django Backend API
+  teknoloji-api:
+    build: .
+    image: teknoloji-haberleri-api:latest
+    container_name: teknoloji-api
+    user: root
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://teknoloji-redis:6379/0
+      - CELERY_BROKER_URL=redis://teknoloji-redis:6379/1
+    depends_on:
+      - teknoloji-redis
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+    networks:
+      - teknoloji-network
+
+  # React Frontend (Vite Dev Server)
+  teknoloji-frontend:
+    image: node:18-alpine
+    container_name: teknoloji-frontend
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+    depends_on:
+      - teknoloji-api
+    restart: unless-stopped
+    networks:
+      - teknoloji-network
+
+  # Redis Cache & Message Broker
+  teknoloji-redis:
+    image: redis:7-alpine
+    container_name: teknoloji-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - teknoloji-redis-data:/data
+    restart: unless-stopped
+    networks:
+      - teknoloji-network
+
+  # Celery Worker (Arka Plan Görev İşleyici)
+  teknoloji-worker:
+    build: .
+    image: teknoloji-haberleri-api:latest
+    container_name: teknoloji-worker
+    user: root
+    command: celery -A cybernews worker -l info
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://teknoloji-redis:6379/0
+      - CELERY_BROKER_URL=redis://teknoloji-redis:6379/1
+    depends_on:
+      - teknoloji-redis
+      - teknoloji-api
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+    networks:
+      - teknoloji-network
+
+  # Celery Beat Scheduler (Zamanlayıcı)
+  teknoloji-scheduler:
+    build: .
+    image: teknoloji-haberleri-api:latest
+    container_name: teknoloji-scheduler
+    user: root
+    command: celery -A cybernews beat -l info
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://teknoloji-redis:6379/0
+      - CELERY_BROKER_URL=redis://teknoloji-redis:6379/1
+    depends_on:
+      - teknoloji-redis
+      - teknoloji-api
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+    networks:
+      - teknoloji-network
+
+volumes:
+  teknoloji-redis-data:
+
+networks:
+  teknoloji-network:
+    driver: bridge
