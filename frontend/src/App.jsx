@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { Navbar, Nav, Container } from 'react-bootstrap'
-import { FaNewspaper, FaShieldAlt, FaHome, FaDharmachakra, FaSun, FaMoon, FaTree, FaServer } from 'react-icons/fa'
+import { FaNewspaper, FaShieldAlt, FaHome, FaDharmachakra, FaSun, FaMoon, FaTree, FaServer, FaToolbox } from 'react-icons/fa'
 import NewsComponent from './components/NewsComponent'
 import CVEComponent from './components/CVEComponent'
 import KubernetesComponent from './components/KubernetesComponent'
 import SREComponent from './components/SREComponent'
+import DevToolsComponent from './components/DevToolsComponent'
 import './App.css'
 
 function App() {
@@ -45,6 +46,9 @@ function App() {
               <Nav.Link as={NavLink} to="/sre">
                 <FaServer className="me-1" /> SRE
               </Nav.Link>
+              <Nav.Link as={NavLink} to="/devtools">
+                <FaToolbox className="me-1" /> DevTools
+              </Nav.Link>
             </Nav>
             <button
               className="theme-toggle-icon"
@@ -65,6 +69,7 @@ function App() {
           <Route path="/cve" element={<CVEComponent />} />
           <Route path="/k8s" element={<KubernetesComponent />} />
           <Route path="/sre" element={<SREComponent />} />
+          <Route path="/devtools" element={<DevToolsComponent />} />
         </Routes>
       </Container>
     </div>
@@ -77,7 +82,7 @@ function HomePage() {
       <h1 className="display-4 mb-4">Teknoloji Radar</h1>
       <p className="lead mb-5">
         Güncel siber güvenlik haberleri, CVE (Common Vulnerabilities and Exposures), 
-        Kubernetes ve SRE (Site Reliability Engineering) güncellemelerini tek bir yerden takip edin.
+        Kubernetes, SRE (Site Reliability Engineering) ve DevTools altyapı araçları güncellemelerini tek bir yerden takip edin.
       </p>
       
       <div className="row justify-content-center">
@@ -140,6 +145,24 @@ function HomePage() {
               </p>
               <NavLink to="/sre" className="btn btn-success">
                 Haberleri Görüntüle
+              </NavLink>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="row justify-content-center mt-2">
+        <div className="col-md-4 mb-4">
+          <div className="card h-100 shadow-sm">
+            <div className="card-body">
+              <FaToolbox size={48} className="mb-3" style={{ color: '#e67e22' }} />
+              <h5 className="card-title">DevTools</h5>
+              <p className="card-text">
+                9 kaynaktan altyapı araçları güncellemelerini çekin — MinIO, PostgreSQL, 
+                MongoDB, Redis, Elasticsearch, RabbitMQ, Ceph, Seq ve Moodle.
+              </p>
+              <NavLink to="/devtools" className="btn" style={{ backgroundColor: '#e67e22', color: '#fff' }}>
+                Güncellemeleri Görüntüle
               </NavLink>
             </div>
           </div>

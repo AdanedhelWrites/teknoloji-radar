@@ -4,18 +4,19 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.core.cache import cache
 from datetime import datetime
-from .models import NewsArticle, CVEEntry, KubernetesEntry, SREEntry
+from .models import NewsArticle, CVEEntry, KubernetesEntry, SREEntry, DevToolsEntry
 from .serializers import (
     NewsArticleSerializer, CVEEntrySerializer, KubernetesEntrySerializer,
-    SREEntrySerializer,
+    SREEntrySerializer, DevToolsEntrySerializer,
     FetchNewsRequestSerializer, FetchCVERequestSerializer, FetchK8sRequestSerializer,
-    FetchSRERequestSerializer,
+    FetchSRERequestSerializer, FetchDevToolsRequestSerializer,
     StatsSerializer
 )
 from scraper_multi import MultiSourceScraper
 from .cve_scraper import MultiCVEScraper
 from .k8s_scraper import MultiK8sScraper
 from .sre_scraper import MultiSREScraper
+from .devtools_scraper import MultiDevToolsScraper
 
 
 @api_view(['GET'])
@@ -681,6 +682,172 @@ def export_sre(request):
     """SRE haberlerini JSON olarak disari aktar"""
     entries = SREEntry.objects.all().order_by('-published_date')
     serializer = SREEntrySerializer(entries, many=True)
+
+    return Response({
+        'success': True,
+        'data': serializer.data,
+        'exported_at': datetime.now().isoformat(),
+        'count': len(serializer.data)
+    })
+
+
+# ==================== DEVTOOLS ENDPOINTS ====================
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_devtools(request):
+    """DevTools guncellemelerini getir (cache veya database'den)"""
+    cached_devtools = cache.get('devtools_entries')
+    if cached_devtools:
+        return Response({
+            'success': True,
+            'data': cached_devtools,
+            'cached': True,
+            'count': len(cached_devtools)
+        })
+
+    entries = DevToolsEntry.objects.all().order_by('-published_date')[:100]
+    serializer = DevToolsEntrySerializer(entries, many=True)
+    data = serializer.data
+
+    if data:
+        cache.set('devtools_entries', data, 3600)
+
+    return Response({
+        'success': True,
+        'data': data,
+        'cached': False,
+        'count': len(data)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def fetch_devtools(request):
+    """Yeni DevTools guncellemelerini cek - SENKRON"""
+    serializer = FetchDevToolsRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Gecersiz istek',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        days = serializer.validated_data.get('days', 60)
+        selected_sources = serializer.validated_data.get('sources', None)
+
+        scraper = MultiDevToolsScraper()
+        entries = scraper.fetch_all(days=days, selected_sources=selected_sources)
+
+        if entries:
+            processed = scraper.process_entries(entries)
+
+            saved_count = 0
+            for entry in processed:
+                obj, created = DevToolsEntry.objects.update_or_create(
+                    link=entry['link'],
+                    defaults={
+                        'source': entry['source'],
+                        'original_title': entry['original_title'],
+                        'turkish_title': entry.get('turkish_title', ''),
+                        'original_description': entry['original_description'],
+                        'turkish_description': entry.get('turkish_description', ''),
+                        'published_date': entry['published_date'],
+                        'version': entry.get('version', ''),
+                        'entry_type': entry.get('entry_type', 'release'),
+                    }
+                )
+                saved_count += 1
+
+            all_entries = DevToolsEntry.objects.all().order_by('-published_date')[:100]
+            cached_data = DevToolsEntrySerializer(all_entries, many=True).data
+
+            cache.set('devtools_entries', cached_data, 3600)
+            cache.set('devtools_last_update', datetime.now().isoformat(), 3600)
+
+            return Response({
+                'success': True,
+                'message': f'{saved_count} DevTools guncellemesi basariyla cekildi ve kaydedildi',
+                'count': saved_count,
+                'data': cached_data
+            })
+        else:
+            return Response({
+                'success': False,
+                'message': 'DevTools guncellemesi bulunamadi',
+                'count': 0,
+                'data': []
+            })
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': str(e),
+            'count': 0,
+            'data': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def clear_devtools_cache(request):
+    """DevTools cache ve database'i temizle"""
+    try:
+        cache.delete('devtools_entries')
+        cache.delete('devtools_last_update')
+
+        DevToolsEntry.objects.all().delete()
+
+        return Response({
+            'success': True,
+            'message': 'DevTools cache ve veritabani temizlendi'
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_devtools_stats(request):
+    """DevTools istatistiklerini getir"""
+    total = DevToolsEntry.objects.count()
+
+    from django.db.models import Count
+    source_stats = DevToolsEntry.objects.values('source').annotate(
+        count=Count('source')
+    ).order_by('-count')
+
+    by_source = {item['source']: item['count'] for item in source_stats}
+
+    type_stats = DevToolsEntry.objects.values('entry_type').annotate(
+        count=Count('entry_type')
+    ).order_by('-count')
+
+    by_type = {item['entry_type']: item['count'] for item in type_stats}
+
+    last_entry = DevToolsEntry.objects.order_by('-created_at').first()
+    last_update = last_entry.created_at.isoformat() if last_entry else None
+
+    return Response({
+        'success': True,
+        'total': total,
+        'by_source': by_source,
+        'by_type': by_type,
+        'last_update': last_update,
+        'cached': cache.get('devtools_entries') is not None
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def export_devtools(request):
+    """DevTools guncellemelerini JSON olarak disari aktar"""
+    entries = DevToolsEntry.objects.all().order_by('-published_date')
+    serializer = DevToolsEntrySerializer(entries, many=True)
 
     return Response({
         'success': True,

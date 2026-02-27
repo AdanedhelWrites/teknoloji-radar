@@ -29,4 +29,11 @@ urlpatterns = [
     path('api/sre/clear/', views.clear_sre_cache, name='clear_sre_cache'),
     path('api/sre/stats/', views.get_sre_stats, name='get_sre_stats'),
     path('api/sre/export/', views.export_sre, name='export_sre'),
+
+    # DevTools API endpoints
+    path('api/devtools/', views.get_devtools, name='get_devtools'),
+    path('api/devtools/fetch/', views.fetch_devtools, name='fetch_devtools'),
+    path('api/devtools/clear/', views.clear_devtools_cache, name='clear_devtools_cache'),
+    path('api/devtools/stats/', views.get_devtools_stats, name='get_devtools_stats'),
+    path('api/devtools/export/', views.export_devtools, name='export_devtools'),
 ]

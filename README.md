@@ -1,6 +1,6 @@
 # Teknoloji Radar
 
-Siber güvenlik haberleri, CVE zafiyetleri, Kubernetes ekosistemi ve SRE (Site Reliability Engineering) haberlerini **18 farklı kaynaktan** toplayan, Türkçeye çeviren ve modern bir arayüzde sunan full-stack haber agregasyon uygulaması.
+Siber güvenlik haberleri, CVE zafiyetleri, Kubernetes ekosistemi, SRE (Site Reliability Engineering) haberleri ve DevTools altyapı araçları güncellemelerini **27 farklı kaynaktan** toplayan, Türkçeye çeviren ve modern bir arayüzde sunan full-stack haber agregasyon uygulaması.
 
 > Bu proje **Vibe Coding** yaklaşımıyla, Claude Code (claude-opus-4-6) ile birlikte geliştirilmiştir.
 
@@ -27,20 +27,21 @@ Siber güvenlik haberleri, CVE zafiyetleri, Kubernetes ekosistemi ve SRE (Site R
                    └───────────┘  └─────────────────┘
                                           │
                               ┌───────────▼───────────┐
-                              │   Harici Kaynaklar     │
-                              │   (18 kaynak)          │
+                               │   Harici Kaynaklar     │
+                               │   (27 kaynak)          │
                               │   + Google Translate    │
                               └─────────────────────────┘
 ```
 
 ## Özellikler
 
-- **18 farklı kaynak** — 5 siber güvenlik, 5 CVE, 3 Kubernetes, 5 SRE
+- **27 farklı kaynak** — 5 siber güvenlik, 5 CVE, 3 Kubernetes, 5 SRE, 9 DevTools
 - **Tam makale çevirisi** — Kısaltma yok, tüm içerik Türkçeye çevrilir
 - **Teknik terim koruması** — 60+ terim (CVE, CVSS, Kubernetes, Docker, vb.) çeviri sırasında bozulmaz
 - **Parça tabanlı çeviri** — Uzun makaleler cümle sınırlarından 4500 karakterlik parçalara bölünerek çevrilir
 - **Karanlık mod** — Koyu tonlarda arayüz
-- **Tarih filtresi** — 1-15 gün aralığında slider ile haber filtreleme
+- **DevTools takibi** — MinIO, Seq, Ceph, MongoDB, PostgreSQL, RabbitMQ, Elasticsearch+Kibana, Redis, Moodle release güncellemeleri
+- **Tarih filtresi** — 1-15 gün (haberler) / 1-60 gün (DevTools) slider ile filtreleme
 - **CVSS şiddet filtresi** — Kritik / Yüksek / Orta / Düşük (CVE sayfası)
 - **Docker Compose** — Tek komutla 5 container ayağa kalkar
 - **Kubernetes** — Production-ready manifest'ler
@@ -86,6 +87,20 @@ Siber güvenlik haberleri, CVE zafiyetleri, Kubernetes ekosistemi ve SRE (Site R
 | PagerDuty Eng | RSS Feed | Incident management ve SRE makaleleri |
 | Google Cloud SRE | RSS Feed | SRE anahtar kelime filtresiyle |
 | DZone DevOps | RSS Feed | SRE/DevOps konulu makaleler |
+
+### DevTools — Altyapı Araçları (9 kaynak)
+
+| Kaynak | Yöntem | Açıklama |
+|--------|--------|----------|
+| MinIO | GitHub Releases API | S3 uyumlu object storage, detaylı changelog |
+| Seq | Datalust Blog RSS | Yapılandırılmış log arama motoru, release filtreli |
+| Ceph | GitHub Releases Atom | Dağıtık storage, version tag tabanlı |
+| MongoDB | Blog RSS | Release ve güncelleme filtreli blog yazıları |
+| PostgreSQL | Resmi News RSS | Resmi haberler, release notları, ekosistem |
+| RabbitMQ | GitHub Releases API | Mesaj kuyruğu, tam changelog |
+| Elasticsearch + Kibana | GitHub Releases API | ES ve Kibana sürümleri, deduplicate edilir |
+| Redis | Blog RSS | Announcing/release filtreli blog yazıları |
+| Moodle | GitHub Tags API | Stabil sürüm tag'leri, commit tarihinden date çıkarılır |
 
 ---
 
@@ -178,7 +193,7 @@ Her sayfa aynı düzeni takip eder:
 
 ## API Endpoints
 
-Her bölüm (news, cve, k8s, sre) aynı endpoint yapısını kullanır:
+Her bölüm (news, cve, k8s, sre, devtools) aynı endpoint yapısını kullanır:
 
 | Method | Endpoint Deseni | Açıklama |
 |--------|-----------------|----------|
@@ -188,7 +203,7 @@ Her bölüm (news, cve, k8s, sre) aynı endpoint yapısını kullanır:
 | GET | `/api/{bölüm}/stats/` | İstatistikleri getir |
 | GET | `/api/{bölüm}/export/` | JSON olarak dışa aktar |
 
-**Bölüm isimleri:** `news` (Siber Güvenlik, fetch endpoint: `/api/fetch/`), `cve`, `k8s`, `sre`
+**Bölüm isimleri:** `news` (Siber Güvenlik, fetch endpoint: `/api/fetch/`), `cve`, `k8s`, `sre`, `devtools`
 
 > **Not:** Siber güvenlik bölümünün fetch, clear, stats ve export endpoint'leri `/api/news/` altında değil, doğrudan `/api/` altındadır: `/api/fetch/`, `/api/clear/`, `/api/stats/`, `/api/export/`
 
@@ -205,13 +220,14 @@ cybersecurity_news/
 │   └── wsgi.py
 │
 ├── news/                       # Ana Django uygulaması
-│   ├── models.py               # NewsArticle, CVEEntry, KubernetesEntry, SREEntry
-│   ├── views.py                # API endpoint'leri (4 bölüm x 5 endpoint = 20)
+│   ├── models.py               # NewsArticle, CVEEntry, KubernetesEntry, SREEntry, DevToolsEntry
+│   ├── views.py                # API endpoint'leri (5 bölüm x 5 endpoint = 25)
 │   ├── serializers.py          # DRF serializer'ları
 │   ├── urls.py                 # API URL pattern'leri
 │   ├── cve_scraper.py          # 5 CVE kaynağı scraper'ı
 │   ├── k8s_scraper.py          # 3 Kubernetes kaynağı scraper'ı
 │   ├── sre_scraper.py          # 5 SRE kaynağı scraper'ı
+│   ├── devtools_scraper.py     # 9 DevTools kaynağı scraper'ı
 │   └── admin.py                # Django admin kayıtları
 │
 ├── scraper_multi.py            # 5 siber güvenlik kaynağı scraper'ı
@@ -224,7 +240,8 @@ cybersecurity_news/
 │   │   │   ├── NewsComponent.jsx       # Siber güvenlik sayfası
 │   │   │   ├── CVEComponent.jsx        # CVE sayfası
 │   │   │   ├── KubernetesComponent.jsx # Kubernetes sayfası
-│   │   │   └── SREComponent.jsx        # SRE sayfası
+│   │   │   ├── SREComponent.jsx        # SRE sayfası
+│   │   │   └── DevToolsComponent.jsx   # DevTools sayfası
 │   │   └── services/
 │   │       └── api.js          # Axios API servisleri
 │   ├── Dockerfile              # Production build: Node + Nginx

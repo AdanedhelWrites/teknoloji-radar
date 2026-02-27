@@ -45,4 +45,13 @@ export const sreApi = {
   exportSRE: () => api.get('/sre/export/'),
 }
 
+// DevTools API
+export const devtoolsApi = {
+  getDevTools: () => api.get('/devtools/'),
+  fetchDevTools: (data) => api.post('/devtools/fetch/', data),
+  clearCache: () => api.post('/devtools/clear/'),
+  getStats: () => api.get('/devtools/stats/'),
+  exportDevTools: () => api.get('/devtools/export/'),
+}
+
 export default api

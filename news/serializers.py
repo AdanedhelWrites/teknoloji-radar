@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsArticle, CVEEntry, KubernetesEntry, SREEntry
+from .models import NewsArticle, CVEEntry, KubernetesEntry, SREEntry, DevToolsEntry
 
 
 class NewsArticleSerializer(serializers.ModelSerializer):
@@ -67,6 +67,24 @@ class SREEntrySerializer(serializers.ModelSerializer):
 class FetchSRERequestSerializer(serializers.Serializer):
     """SRE haber cekme istegi serializer"""
     days = serializers.IntegerField(default=30, min_value=1, max_value=90)
+    sources = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True
+    )
+
+
+class DevToolsEntrySerializer(serializers.ModelSerializer):
+    """DevTools serializer"""
+
+    class Meta:
+        model = DevToolsEntry
+        fields = '__all__'
+
+
+class FetchDevToolsRequestSerializer(serializers.Serializer):
+    """DevTools guncelleme cekme istegi serializer"""
+    days = serializers.IntegerField(default=60, min_value=1, max_value=120)
     sources = serializers.ListField(
         child=serializers.CharField(),
         required=False,
