@@ -5,19 +5,19 @@ Guncel Haberler - Multi-Source Scraper
 
 import requests
 from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator
 import json
 from datetime import datetime, timedelta
 import re
 import time
 from abc import ABC, abstractmethod
 
+from news.translation_utils import translate_text, translate_long_text
+
 
 class NewsSource(ABC):
     """Haber kaynagi icin abstract base class"""
 
     def __init__(self):
-        self.translator = GoogleTranslator(source='auto', target='tr')
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -36,52 +36,6 @@ class NewsSource(ABC):
     @abstractmethod
     def get_base_url(self):
         pass
-
-    def translate_text(self, text):
-        """Metni Turkceye cevirir - uzun metinler icin chunk'larla"""
-        if not text or len(text.strip()) == 0:
-            return ""
-        try:
-            return self.translator.translate(text)
-        except Exception as e:
-            print(f"Ceviri hatasi: {e}")
-            return text
-
-    def translate_long_text(self, text, chunk_size=4500):
-        """Uzun metinleri parcalayarak cevirir"""
-        if not text or len(text.strip()) == 0:
-            return ""
-
-        if len(text) <= chunk_size:
-            return self.translate_text(text)
-
-        # Cumle bazli parcalama
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        chunks = []
-        current_chunk = ""
-
-        for sentence in sentences:
-            if len(current_chunk) + len(sentence) + 1 <= chunk_size:
-                current_chunk += (" " + sentence) if current_chunk else sentence
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                current_chunk = sentence
-
-        if current_chunk:
-            chunks.append(current_chunk)
-
-        translated_parts = []
-        for i, chunk in enumerate(chunks):
-            try:
-                translated = self.translate_text(chunk)
-                translated_parts.append(translated)
-                time.sleep(0.3)
-            except Exception as e:
-                print(f"  Chunk {i+1}/{len(chunks)} ceviri hatasi: {e}")
-                translated_parts.append(chunk)
-
-        return ' '.join(translated_parts)
 
     def fetch_full_article(self, url):
         """Haber sayfasina gidip baslik + tam makale icerigini ceker"""
@@ -685,7 +639,6 @@ class MultiSourceScraper:
     def process_news(self, articles):
         """Haberleri tam olarak Turkceye cevirir"""
         processed = []
-        translator_instance = TheHackerNewsSource()  # translate_long_text icin
 
         total = len(articles)
         print(f"\n{'='*60}")
@@ -696,17 +649,15 @@ class MultiSourceScraper:
             print(f"Cevriliyor: {i+1}/{total} - {article['title'][:50]}...")
 
             try:
-                translator = GoogleTranslator(source='auto', target='tr')
-
                 # Baslik cevirisi
                 try:
-                    translated_title = translator.translate(article['title'])
+                    translated_title = translate_text(article['title'])
                     time.sleep(0.2)
                 except Exception:
                     translated_title = article['title']
 
                 # Tam icerik cevirisi (chunk'larla)
-                translated_desc = translator_instance.translate_long_text(
+                translated_desc = translate_long_text(
                     article['description']
                 )
 

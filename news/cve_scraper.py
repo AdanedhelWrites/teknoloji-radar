@@ -9,39 +9,19 @@ from datetime import datetime, timedelta
 import re
 import json
 from typing import List, Dict, Optional
-from deep_translator import GoogleTranslator
 import time
+
+from news.translation_utils import translate_text, translate_long_text
 
 
 class CVEScraper:
     """CVE Scraper temel sınıfı"""
     
     def __init__(self):
-        self.translator = GoogleTranslator(source='auto', target='tr')
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
-    
-    def translate_text(self, text: str, max_retries: int = 2) -> str:
-        """Metni Türkçeye çevirir"""
-        if not text:
-            return ""
-        
-        if len(text) > 4000:
-            text = text[:4000]
-        
-        for attempt in range(max_retries):
-            try:
-                translated = self.translator.translate(text)
-                time.sleep(0.3)
-                return translated
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                continue
-        
-        return text
     
     def parse_cvss_score(self, severity_text: str) -> Optional[float]:
         """CVSS skorunu metinden çıkarır"""
@@ -859,7 +839,7 @@ class MultiCVEScraper(CVEScraper):
                 if desc and len(desc.strip()) > 30:
                     if i % 20 == 0:
                         print(f"Çevriliyor: {i}/{total}")
-                    cve['turkish_description'] = self.translate_text(desc)
+                    cve['turkish_description'] = translate_text(desc)
                 else:
                     cve['turkish_description'] = desc
                 

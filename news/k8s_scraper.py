@@ -10,69 +10,23 @@ from datetime import datetime, timedelta
 import re
 import json
 from typing import List, Dict, Optional
-from deep_translator import GoogleTranslator
 import time
+
+from news.translation_utils import (
+    translate_text, translate_long_text,
+    _protect_terms, _restore_terms, turkish_post_process,
+)
 
 
 class K8sScraper:
     """Kubernetes Scraper temel sinifi"""
 
     def __init__(self):
-        self.translator = GoogleTranslator(source='auto', target='tr')
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         })
-
-    def translate_text(self, text: str, max_retries: int = 3) -> str:
-        if not text:
-            return ""
-        for attempt in range(max_retries):
-            try:
-                translated = self.translator.translate(text)
-                time.sleep(0.5)
-                return translated
-            except Exception as e:
-                print(f"Ceviri hatasi (deneme {attempt + 1}): {e}")
-                time.sleep(1)
-        return text
-
-    def translate_long_text(self, text: str, chunk_size: int = 4500) -> str:
-        """Uzun metinleri parcalayarak cevirir (cumle bazli)"""
-        if not text or len(text.strip()) == 0:
-            return ""
-
-        if len(text) <= chunk_size:
-            return self.translate_text(text)
-
-        # Cumle bazli parcalama
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        chunks = []
-        current_chunk = ""
-
-        for sentence in sentences:
-            if len(current_chunk) + len(sentence) + 1 <= chunk_size:
-                current_chunk += (" " + sentence) if current_chunk else sentence
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                current_chunk = sentence
-
-        if current_chunk:
-            chunks.append(current_chunk)
-
-        translated_parts = []
-        for i, chunk in enumerate(chunks):
-            try:
-                translated = self.translate_text(chunk)
-                translated_parts.append(translated)
-                time.sleep(0.5)
-            except Exception as e:
-                print(f"  Chunk {i+1}/{len(chunks)} ceviri hatasi: {e}")
-                translated_parts.append(chunk)
-
-        return ' '.join(translated_parts)
 
     def fetch_article_content(self, url: str) -> Dict:
         """Haber linkine gidip gercek baslik ve icerigi ceker"""
@@ -159,100 +113,7 @@ class K8sScraper:
             return 'ecosystem'
         return 'blog'
 
-    # Ceviride korunacak teknik terimler
-    PROTECTED_TERMS = {
-        # Kubernetes / container kavramlari
-        'pod', 'pods', 'node', 'nodes', 'kubelet', 'kubeadm', 'kubectl',
-        'kube-proxy', 'kube-apiserver', 'kube-controller-manager', 'kube-scheduler',
-        'StatefulSet', 'StatefulSets', 'DaemonSet', 'ReplicaSet', 'Deployment',
-        'ResourceClaim', 'ResourceClaims', 'ResourceSlice',
-        'EndpointSlice', 'EndpointSlices', 'Service', 'Services',
-        'ConfigMap', 'Secret', 'PersistentVolume', 'PersistentVolumeClaim',
-        'StorageClass', 'StorageClasses', 'Namespace',
-        'ClusterRole', 'ClusterRoleBinding',
-        'NodePrepareResources', 'NodeUnprepareResources',
-        # Protokol / networking
-        'IPv4', 'IPv6', 'IPVS', 'ipvs', 'iptables', 'winkernel',
-        'dual-stack', 'PreferDualStack', 'RequireDualStack',
-        'HNS', 'hnslib', 'ModifyLoadBalancerPolicy',
-        'load balancer', 'LoadBalancer',
-        # DRA / Scheduling
-        'DRA', 'goroutine', 'goroutines', 'feature gate',
-        'SchedulerAsyncAPICalls',
-        # SELinux / security
-        'SELinux', 'RBAC', 'CVE',
-        # Go / build
-        'Go', 'github.com/pkg/errors',
-        # API / metrics
-        'apiserver_watch_events_sizes',
-        'CHANGELOG',
-        # Helm / CNCF
-        'Helm', 'Patroni', 'CloudNativePG', 'Harbor', 'Istio',
-        'Envoy', 'Prometheus', 'Argo', 'CNCF',
-        'etcd',
-    }
-
-    def _protect_technical_terms(self, text: str) -> tuple:
-        """
-        Teknik terimleri, SIG etiketlerini, PR referanslarini ve
-        ozel isimleri placeholder ile degistir.
-        Geri: (degistirilmis_metin, geri_donus_sozlugu)
-        """
-        replacements = {}
-        counter = [0]
-
-        def make_placeholder():
-            counter[0] += 1
-            return f"XTERM{counter[0]:04d}X"
-
-        result = text
-
-        # 1. PR referanslari: (#123456, @user) [SIG ...]
-        def replace_pr_ref(m):
-            ph = make_placeholder()
-            replacements[ph] = m.group(0)
-            return ph
-        result = re.sub(
-            r'\(#\d+,\s*@[\w-]+\)\s*\[SIG [^\]]+\]',
-            replace_pr_ref, result
-        )
-
-        # 2. Tek basina SIG etiketleri: [SIG Node], [SIG Network and Windows]
-        result = re.sub(
-            r'\[SIG [^\]]+\]',
-            replace_pr_ref, result
-        )
-
-        # 3. Backtick icindeki kod parcalari: `SchedulerAsyncAPICalls`
-        result = re.sub(
-            r'`[^`]+`',
-            replace_pr_ref, result
-        )
-
-        # 4. GitHub URL'leri ve paket isimleri
-        result = re.sub(
-            r'github\.com/[\w./-]+',
-            replace_pr_ref, result
-        )
-
-        # 5. Korunan teknik terimleri (kelime sinirli)
-        for term in sorted(self.PROTECTED_TERMS, key=len, reverse=True):
-            pattern = r'\b' + re.escape(term) + r'\b'
-            matches = list(re.finditer(pattern, result))
-            for m in reversed(matches):
-                ph = make_placeholder()
-                replacements[ph] = m.group(0)
-                result = result[:m.start()] + ph + result[m.end():]
-
-        return result, replacements
-
-    def _restore_technical_terms(self, text: str, replacements: dict) -> str:
-        """Placeholder'lari orijinal teknik terimlerle geri degistir"""
-        result = text
-        # Uzun placeholder'lardan kisa olanlara sirala (ic ice gelme onlemi)
-        for ph in sorted(replacements.keys(), key=len, reverse=True):
-            result = result.replace(ph, replacements[ph])
-        return result
+    # K8s PROTECTED_TERMS ve protect/restore artik translation_utils modulunden geliyor
 
 
 class K8sBlogScraper(K8sScraper):
@@ -885,9 +746,9 @@ class MultiK8sScraper(K8sScraper):
             desc_text = ' '.join(desc_buffer).strip()
             if desc_text:
                 # Teknik terimleri koru, cevir, geri yukle
-                protected, replacements = self._protect_technical_terms(desc_text)
-                translated = self.translate_long_text(protected)
-                restored = self._restore_technical_terms(translated, replacements)
+                protected, replacements = _protect_terms(desc_text)
+                translated = translate_long_text(protected)
+                restored = _restore_terms(translated, replacements)
                 # «term» isaretlerini geri `term` formatina cevir
                 restored = re.sub(r'[«»]', '`', restored)
                 result_lines.append(restored)
@@ -934,14 +795,14 @@ class MultiK8sScraper(K8sScraper):
                 source = entry.get('source', '')
                 print(f"Isleniyor: {i}/{total} - {entry['original_title'][:50]}... ({len(desc)} karakter)")
 
-                entry['turkish_title'] = self.translate_text(entry['original_title'])
+                entry['turkish_title'] = translate_text(entry['original_title'])
 
                 if source == 'GitHub Releases' and '===SECTION:' in desc:
                     # Yapisal CHANGELOG — ozel ceviri
                     entry['turkish_description'] = self._translate_structured_changelog(desc)
                 else:
                     # Normal blog/haber icerigi — standart ceviri
-                    entry['turkish_description'] = self.translate_long_text(desc)
+                    entry['turkish_description'] = translate_long_text(desc)
 
                 processed.append(entry)
             except Exception as e:

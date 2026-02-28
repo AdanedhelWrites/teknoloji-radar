@@ -14,122 +14,21 @@ from datetime import datetime, timedelta
 import re
 import json
 from typing import List, Dict, Optional
-from deep_translator import GoogleTranslator
 import time
 from email.utils import parsedate_to_datetime
+
+from news.translation_utils import translate_text, translate_long_text
 
 
 class SREScraper:
     """SRE Scraper temel sinifi"""
 
     def __init__(self):
-        self.translator = GoogleTranslator(source='auto', target='tr')
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         })
-
-    # Teknik terimler - ceviri sirasinda korunacak
-    PROTECTED_TERMS = [
-        'SRE', 'SLO', 'SLA', 'SLI', 'MTTR', 'MTTF', 'MTTD', 'MTBF',
-        'DevOps', 'DevSecOps', 'GitOps', 'CI/CD', 'CI', 'CD',
-        'Kubernetes', 'K8s', 'Docker', 'Terraform', 'Ansible', 'Prometheus',
-        'Grafana', 'Datadog', 'PagerDuty', 'OpsGenie', 'VictorOps',
-        'AWS', 'GCP', 'Azure', 'CloudFlare', 'Cloudflare',
-        'API', 'REST', 'gRPC', 'GraphQL', 'HTTP', 'HTTPS', 'DNS', 'CDN',
-        'Nginx', 'HAProxy', 'Envoy', 'Istio', 'Linkerd',
-        'PostgreSQL', 'MySQL', 'Redis', 'MongoDB', 'Kafka', 'RabbitMQ',
-        'ElasticSearch', 'Elasticsearch', 'OpenSearch', 'Splunk',
-        'Linux', 'Ubuntu', 'CentOS', 'RHEL',
-        'GitHub', 'GitLab', 'Jenkins', 'ArgoCD', 'Argo CD',
-        'OpenTelemetry', 'Jaeger', 'Zipkin',
-        'CPU', 'RAM', 'SSD', 'I/O', 'IO',
-        'Toil', 'Runbook', 'Playbook', 'Postmortem', 'Post-mortem',
-        'On-call', 'Oncall', 'On-Call',
-        'Chaos Engineering', 'Chaos Monkey',
-        'Load Balancer', 'Auto-scaling', 'Autoscaling',
-        'Microservices', 'Monolith',
-        'Incident', 'Outage', 'Downtime',
-        'Observability', 'Monitoring', 'Alerting',
-        'IaC', 'Infrastructure as Code',
-    ]
-
-    def _protect_terms(self, text: str) -> tuple:
-        """Teknik terimleri placeholder ile degistirir"""
-        protected = text
-        replacements = {}
-        for i, term in enumerate(self.PROTECTED_TERMS):
-            placeholder = f"__TERM{i:03d}__"
-            pattern = re.compile(re.escape(term), re.IGNORECASE)
-            if pattern.search(protected):
-                replacements[placeholder] = term
-                protected = pattern.sub(placeholder, protected)
-        return protected, replacements
-
-    def _restore_terms(self, text: str, replacements: dict) -> str:
-        """Placeholder'lari orijinal terimlerle degistirir"""
-        restored = text
-        for placeholder, original in replacements.items():
-            restored = restored.replace(placeholder, original)
-        return restored
-
-    def translate_text(self, text: str, max_retries: int = 2) -> str:
-        """Metni Turkceye cevirir (teknik terim korumali)"""
-        if not text or len(text.strip()) == 0:
-            return ""
-
-        protected, replacements = self._protect_terms(text)
-
-        if len(protected) > 4500:
-            protected = protected[:4500]
-
-        for attempt in range(max_retries):
-            try:
-                translated = self.translator.translate(protected)
-                time.sleep(0.3)
-                return self._restore_terms(translated, replacements)
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                continue
-
-        return text
-
-    def translate_long_text(self, text: str, chunk_size: int = 4500) -> str:
-        """Uzun metinleri parcalayarak cevirir"""
-        if not text or len(text.strip()) == 0:
-            return ""
-
-        if len(text) <= chunk_size:
-            return self.translate_text(text)
-
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        chunks = []
-        current_chunk = ""
-
-        for sentence in sentences:
-            if len(current_chunk) + len(sentence) + 1 <= chunk_size:
-                current_chunk += (" " + sentence) if current_chunk else sentence
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                current_chunk = sentence
-
-        if current_chunk:
-            chunks.append(current_chunk)
-
-        translated_parts = []
-        for i, chunk in enumerate(chunks):
-            try:
-                translated = self.translate_text(chunk)
-                translated_parts.append(translated)
-                time.sleep(0.3)
-            except Exception as e:
-                print(f"  Chunk {i+1}/{len(chunks)} ceviri hatasi: {e}")
-                translated_parts.append(chunk)
-
-        return ' '.join(translated_parts)
 
     def _parse_rss_date(self, date_str: str) -> Optional[datetime]:
         """RFC 2822 tarih parse (RSS pubDate formati)"""
@@ -653,12 +552,12 @@ class MultiSREScraper(SREScraper):
 
                 # Baslik cevirisi
                 try:
-                    translated_title = self.translate_text(entry['title'])
+                    translated_title = translate_text(entry['title'])
                 except Exception:
                     translated_title = entry['title']
 
                 # Icerik cevirisi
-                translated_desc = self.translate_long_text(entry['description'])
+                translated_desc = translate_long_text(entry['description'])
 
                 processed.append({
                     'original_title': entry['title'],

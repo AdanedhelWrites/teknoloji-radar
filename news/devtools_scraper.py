@@ -17,102 +17,21 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
 from typing import List, Dict, Optional
-from deep_translator import GoogleTranslator
 import time
 from email.utils import parsedate_to_datetime
+
+from news.translation_utils import translate_text, translate_long_text
 
 
 class DevToolsScraper:
     """DevTools Scraper temel sinifi"""
 
     def __init__(self):
-        self.translator = GoogleTranslator(source='auto', target='tr')
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json, text/html, application/xhtml+xml, application/xml;q=0.9,*/*;q=0.8',
         })
-
-    PROTECTED_TERMS = [
-        'MinIO', 'Seq', 'Ceph', 'MongoDB', 'PostgreSQL', 'RabbitMQ',
-        'Elasticsearch', 'Kibana', 'Redis', 'Moodle',
-        'RELEASE', 'LTS', 'GA', 'RC', 'Beta', 'Alpha',
-        'API', 'REST', 'gRPC', 'GraphQL', 'HTTP', 'HTTPS', 'DNS', 'CDN',
-        'S3', 'AMQP', 'MQTT', 'LDAP', 'SAML', 'OAuth', 'JWT', 'TLS', 'SSL',
-        'Kubernetes', 'K8s', 'Docker', 'Helm', 'Terraform',
-        'AWS', 'GCP', 'Azure',
-        'CPU', 'RAM', 'SSD', 'I/O', 'IO', 'GB', 'TB', 'MB',
-        'CVE', 'CVSS', 'XSS', 'SQL', 'NoSQL',
-        'Linux', 'Ubuntu', 'CentOS', 'RHEL', 'Debian',
-        'GitHub', 'GitLab',
-        'RADOS', 'RGW', 'CephFS', 'BlueStore', 'OSD', 'MON', 'MDS',
-        'PGPool', 'pgvector', 'VACUUM', 'WAL', 'MVCC',
-        'Logstash', 'Beats', 'Filebeat', 'Metricbeat', 'Lucene',
-        'SCORM', 'LTI', 'IMSCP',
-        'Erasure Coding', 'Object Storage', 'Block Storage',
-        'Replication', 'Sharding', 'Clustering', 'Failover',
-        'CI/CD', 'DevOps', 'SRE',
-    ]
-
-    def _protect_terms(self, text: str) -> tuple:
-        protected = text
-        replacements = {}
-        for i, term in enumerate(self.PROTECTED_TERMS):
-            placeholder = f"__TERM{i:03d}__"
-            pattern = re.compile(re.escape(term), re.IGNORECASE)
-            if pattern.search(protected):
-                replacements[placeholder] = term
-                protected = pattern.sub(placeholder, protected)
-        return protected, replacements
-
-    def _restore_terms(self, text: str, replacements: dict) -> str:
-        restored = text
-        for placeholder, original in replacements.items():
-            restored = restored.replace(placeholder, original)
-        return restored
-
-    def translate_text(self, text: str, max_retries: int = 2) -> str:
-        if not text or len(text.strip()) == 0:
-            return ""
-        protected, replacements = self._protect_terms(text)
-        if len(protected) > 4500:
-            protected = protected[:4500]
-        for attempt in range(max_retries):
-            try:
-                translated = self.translator.translate(protected)
-                time.sleep(0.3)
-                return self._restore_terms(translated, replacements)
-            except Exception:
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                continue
-        return text
-
-    def translate_long_text(self, text: str, chunk_size: int = 4500) -> str:
-        if not text or len(text.strip()) == 0:
-            return ""
-        if len(text) <= chunk_size:
-            return self.translate_text(text)
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        chunks = []
-        current_chunk = ""
-        for sentence in sentences:
-            if len(current_chunk) + len(sentence) + 1 <= chunk_size:
-                current_chunk += (" " + sentence) if current_chunk else sentence
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                current_chunk = sentence
-        if current_chunk:
-            chunks.append(current_chunk)
-        translated_parts = []
-        for chunk in chunks:
-            try:
-                translated_parts.append(self.translate_text(chunk))
-                time.sleep(0.3)
-            except Exception:
-                translated_parts.append(chunk)
-        return ' '.join(translated_parts)
 
     def _parse_rss_date(self, date_str: str) -> Optional[datetime]:
         if not date_str:
@@ -944,10 +863,10 @@ class MultiDevToolsScraper(DevToolsScraper):
                 if i % 10 == 0:
                     print(f"  Cevriliyor: {i}/{total}")
                 try:
-                    translated_title = self.translate_text(entry['title'])
+                    translated_title = translate_text(entry['title'])
                 except Exception:
                     translated_title = entry['title']
-                translated_desc = self.translate_long_text(entry['description'])
+                translated_desc = translate_long_text(entry['description'])
                 processed.append({
                     'original_title': entry['title'],
                     'turkish_title': translated_title,
