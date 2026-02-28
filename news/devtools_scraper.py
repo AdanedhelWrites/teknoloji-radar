@@ -447,13 +447,14 @@ class RabbitMQScraper(DevToolsScraper):
                 pub_date = self._parse_rss_date(rel.get('published_at', ''))
                 if pub_date and pub_date.replace(tzinfo=None) < cutoff:
                     continue
-                title = rel.get('name', '') or rel.get('tag_name', '')
+                raw_title = rel.get('name', '') or rel.get('tag_name', '')
                 body = self._markdown_to_text(rel.get('body', ''))
                 link = rel.get('html_url', '')
                 date_str = pub_date.strftime('%Y-%m-%d') if pub_date else datetime.now().strftime('%Y-%m-%d')
+                title = raw_title if raw_title.lower().startswith('rabbitmq') else f"RabbitMQ {raw_title}"
                 entries.append({
-                    'title': f"RabbitMQ {title}",
-                    'description': body[:4000] if body else f"RabbitMQ {title} released",
+                    'title': title,
+                    'description': body[:4000] if body else f"{title} released",
                     'link': link,
                     'date': date_str,
                     'source': 'RabbitMQ',
@@ -467,20 +468,77 @@ class RabbitMQScraper(DevToolsScraper):
 
 
 # ============================================================
-# 7. Elasticsearch + Kibana — GitHub Releases API
+# 7. Elasticsearch + Kibana — Resmi Release Notes sayfasindan
 # ============================================================
 class ElasticScraper(DevToolsScraper):
-    """Elasticsearch + Kibana GitHub Releases scraper"""
+    """Elasticsearch + Kibana — elastic.co release notes sayfasindan detayli changelog cekilir"""
 
     ES_API = "https://api.github.com/repos/elastic/elasticsearch/releases"
     KIBANA_API = "https://api.github.com/repos/elastic/kibana/releases"
+    ES_RELEASE_NOTES_URL = "https://www.elastic.co/docs/release-notes/elasticsearch"
+    KIBANA_RELEASE_NOTES_URL = "https://www.elastic.co/docs/release-notes/kibana"
+
+    _release_notes_cache = {}
+
+    def _fetch_release_notes_section(self, url: str, version_tag: str) -> str:
+        """elastic.co release notes sayfasindan belirli bir versiyonun notlarini cikar.
+        Sayfa tek bir <section> icinde tum versiyonlari barindirir.
+        h2 elementleri versiyon basliklarini, aralarindaki icerik release notlarini icerir."""
+        try:
+            version = version_tag.lstrip('v')
+            # Sayfa cache'i — ayni sayfayi tekrar tekrar cekmeyelim
+            if url not in self._release_notes_cache:
+                resp = self.session.get(url, timeout=30)
+                if not resp.ok:
+                    return ""
+                self._release_notes_cache[url] = resp.content
+            soup = BeautifulSoup(self._release_notes_cache[url], 'html.parser')
+
+            # h2'lerden versiyonumuzu bul
+            target_h2 = None
+            for h2 in soup.find_all('h2'):
+                if h2.get_text(strip=True) == version:
+                    target_h2 = h2
+                    break
+            if not target_h2:
+                return ""
+
+            # h2'nin heading-wrapper parent'indan sonraki sibling'leri topla
+            # ta ki bir sonraki h2'ye kadar
+            start = target_h2.parent if target_h2.parent.name == 'div' else target_h2
+            content_parts = []
+            for sib in start.find_next_siblings():
+                # Eger bu sibling icinde bir h2 varsa ve farkli bir versiyon ise dur
+                inner_h2 = sib.find('h2') if hasattr(sib, 'find') else None
+                if inner_h2:
+                    inner_text = inner_h2.get_text(strip=True)
+                    if re.match(r'\d+\.\d+', inner_text) and inner_text != version:
+                        break
+                # Eger sibling kendisi h2 ise
+                if hasattr(sib, 'name') and sib.name == 'h2':
+                    sib_text = sib.get_text(strip=True)
+                    if re.match(r'\d+\.\d+', sib_text) and sib_text != version:
+                        break
+                text = sib.get_text(separator='\n', strip=True) if hasattr(sib, 'get_text') else str(sib).strip()
+                if text:
+                    content_parts.append(text)
+
+            result = '\n'.join(content_parts)
+            result = re.sub(r'\n{3,}', '\n\n', result)
+            if len(result) > 100:
+                print(f"    [Elastic] {version} icin {len(result)} karakter release notes bulundu")
+                return result
+            return ""
+        except Exception as e:
+            print(f"    [Elastic] Release notes cekilemedi ({version_tag}): {e}")
+            return ""
 
     def fetch_entries(self, days: int = 60) -> List[Dict]:
         print(f"[Elastic] Son {days} gunun guncellemeleri cekiliyor...")
         entries = []
         cutoff = datetime.now() - timedelta(days=days)
 
-        # Elasticsearch releases
+        # Elasticsearch releases — once API'den listeyi al
         try:
             resp = self.session.get(self.ES_API, params={'per_page': 10}, timeout=20)
             resp.raise_for_status()
@@ -490,17 +548,28 @@ class ElasticScraper(DevToolsScraper):
                 pub_date = self._parse_rss_date(rel.get('published_at', ''))
                 if pub_date and pub_date.replace(tzinfo=None) < cutoff:
                     continue
-                title = rel.get('name', '') or rel.get('tag_name', '')
-                body = self._markdown_to_text(rel.get('body', ''))
+                raw_title = rel.get('name', '') or rel.get('tag_name', '')
+                tag = rel.get('tag_name', '')
                 link = rel.get('html_url', '')
                 date_str = pub_date.strftime('%Y-%m-%d') if pub_date else datetime.now().strftime('%Y-%m-%d')
+                # Baslikta "Elasticsearch" zaten varsa tekrar ekleme
+                title = raw_title if raw_title.lower().startswith('elasticsearch') else f"Elasticsearch {raw_title}"
+
+                # Resmi release notes sayfasindan detayli changelog cek
+                description = self._fetch_release_notes_section(self.ES_RELEASE_NOTES_URL, tag)
+                if not description:
+                    # Fallback: GitHub body
+                    description = self._markdown_to_text(rel.get('body', ''))
+                if not description:
+                    description = f"{title} released. See release notes at elastic.co for details."
+
                 entries.append({
-                    'title': f"Elasticsearch {title}",
-                    'description': body[:4000] if body else f"Elasticsearch {title} released",
+                    'title': title,
+                    'description': description[:8000],
                     'link': link,
                     'date': date_str,
                     'source': 'Elastic',
-                    'version': rel.get('tag_name', ''),
+                    'version': tag,
                     'entry_type': 'release',
                 })
         except Exception as e:
@@ -516,17 +585,25 @@ class ElasticScraper(DevToolsScraper):
             for rel in releases:
                 tag = rel.get('tag_name', '')
                 if tag in es_versions:
-                    continue  # ES ile ayni versiyon, tekrar ekleme
+                    continue
                 pub_date = self._parse_rss_date(rel.get('published_at', ''))
                 if pub_date and pub_date.replace(tzinfo=None) < cutoff:
                     continue
-                title = rel.get('name', '') or tag
-                body = self._markdown_to_text(rel.get('body', ''))
+                raw_title = rel.get('name', '') or tag
                 link = rel.get('html_url', '')
                 date_str = pub_date.strftime('%Y-%m-%d') if pub_date else datetime.now().strftime('%Y-%m-%d')
+                title = raw_title if raw_title.lower().startswith('kibana') else f"Kibana {raw_title}"
+
+                # Kibana release notes
+                description = self._fetch_release_notes_section(self.KIBANA_RELEASE_NOTES_URL, tag)
+                if not description:
+                    description = self._markdown_to_text(rel.get('body', ''))
+                if not description:
+                    description = f"{title} released. See release notes at elastic.co for details."
+
                 entries.append({
-                    'title': f"Kibana {title}",
-                    'description': body[:4000] if body else f"Kibana {title} released",
+                    'title': title,
+                    'description': description[:8000],
                     'link': link,
                     'date': date_str,
                     'source': 'Elastic',
@@ -541,15 +618,68 @@ class ElasticScraper(DevToolsScraper):
 
 
 # ============================================================
-# 8. Redis — Blog RSS (filtreli)
+# 8. Redis — Blog RSS + tam makale icerigi
 # ============================================================
 class RedisScraper(DevToolsScraper):
-    """Redis Blog RSS scraper — release filtreli"""
+    """Redis Blog RSS scraper — blog sayfasina girip tam icerik cekilir"""
 
     FEED_URL = "https://redis.io/blog/feed"
 
+    def _fetch_full_article(self, url: str) -> str:
+        """Redis blog sayfasina gidip tam makale icerigini ceker.
+        Redis blog icerigi [class*='blockContent'] div'inde bulunur."""
+        try:
+            resp = self.session.get(url, timeout=20)
+            if not resp.ok:
+                return ""
+            soup = BeautifulSoup(resp.content, 'html.parser')
+
+            # Redis blog icerigi blockContent class'li div'de
+            article = soup.select_one('[class*="blockContent"]')
+
+            # Fallback: diger olasi container'lar
+            if not article:
+                for selector in ['article', '[class*="content__"]', 'main']:
+                    article = soup.select_one(selector)
+                    if article and len(article.get_text(strip=True)) > 500:
+                        break
+                    article = None
+
+            if not article:
+                return ""
+
+            # Navigation, header, footer, sidebar vs. kaldir
+            for tag in article.find_all(['nav', 'header', 'footer', 'aside',
+                                          'script', 'style', 'noscript']):
+                tag.decompose()
+
+            text = article.get_text(separator='\n', strip=True)
+            # Gereksiz satirlari temizle
+            lines = text.split('\n')
+            clean_lines = []
+            for line in lines:
+                line = line.strip()
+                if len(line) < 3:
+                    continue
+                # Menu/nav satirlarini atla
+                if line in ['Search', 'Login', 'Try Redis', 'Book a meeting',
+                            'Back to blog', 'Try for free', 'Talk to sales',
+                            'Get started with Redis today']:
+                    continue
+                clean_lines.append(line)
+            result = '\n'.join(clean_lines)
+            result = re.sub(r'\n{3,}', '\n\n', result)
+
+            if len(result) > 200:
+                print(f"    [Redis] Tam makale cekildi: {len(result)} karakter")
+                return result
+            return ""
+        except Exception as e:
+            print(f"    [Redis] Makale cekilemedi: {e}")
+            return ""
+
     def fetch_entries(self, days: int = 60) -> List[Dict]:
-        print(f"[Redis] Son {days} gunun guncellemeleri cekiliyor (RSS)...")
+        print(f"[Redis] Son {days} gunun guncellemeleri cekiliyor (RSS + tam icerik)...")
         entries = []
         cutoff = datetime.now() - timedelta(days=days)
         try:
@@ -576,14 +706,22 @@ class RedisScraper(DevToolsScraper):
                     continue
                 link_tag = item.find('link')
                 link = link_tag.get_text(strip=True) if link_tag else ''
-                desc_tag = item.find('description')
-                description = self._html_to_text(desc_tag.get_text()) if desc_tag else title_text
                 date_str = pub_date.strftime('%Y-%m-%d') if pub_date else datetime.now().strftime('%Y-%m-%d')
                 version_match = re.search(r'Redis\s+(\d+\.\d+(?:\.\d+)?)', title_text, re.IGNORECASE)
                 version = version_match.group(1) if version_match else ''
+
+                # Tam makale icerigini blog sayfasindan cek
+                description = ''
+                if link:
+                    description = self._fetch_full_article(link)
+                # Fallback: RSS description
+                if not description or len(description) < 200:
+                    desc_tag = item.find('description')
+                    description = self._html_to_text(desc_tag.get_text()) if desc_tag else title_text
+
                 entries.append({
                     'title': title_text,
-                    'description': description[:4000],
+                    'description': description[:8000],
                     'link': link,
                     'date': date_str,
                     'source': 'Redis',
@@ -597,13 +735,71 @@ class RedisScraper(DevToolsScraper):
 
 
 # ============================================================
-# 9. Moodle — GitHub Tags API
+# 9. Moodle — GitHub Tags API + moodledev.io release notes
 # ============================================================
 class MoodleScraper(DevToolsScraper):
-    """Moodle GitHub Tags + download page scraper"""
+    """Moodle GitHub Tags + moodledev.io release notes scraper"""
 
     TAGS_API = "https://api.github.com/repos/moodle/moodle/tags"
-    DOWNLOAD_URL = "https://download.moodle.org/releases/latest/"
+
+    def _fetch_release_notes(self, version: str) -> str:
+        """moodledev.io'dan belirli bir Moodle versiyonunun release notlarini ceker
+        URL format: https://moodledev.io/general/releases/{major}.{minor}/{version}
+        Ornek: 5.1.3 -> https://moodledev.io/general/releases/5.1/5.1.3
+        """
+        try:
+            parts = version.split('.')
+            if len(parts) < 3:
+                return ""
+            major_minor = f"{parts[0]}.{parts[1]}"
+            url = f"https://moodledev.io/general/releases/{major_minor}/{version}"
+            print(f"    [Moodle] Release notes cekiliyor: {url}")
+            resp = self.session.get(url, timeout=20)
+            if not resp.ok:
+                print(f"    [Moodle] Sayfa acilamadi: HTTP {resp.status_code}")
+                return ""
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            # Ana icerik alani
+            article = soup.select_one('article') or soup.select_one('.markdown') or soup.select_one('main')
+            if not article:
+                return ""
+            # Navigation, footer vb. kaldir
+            for tag in article.find_all(['nav', 'header', 'footer', 'aside', 'script', 'style']):
+                tag.decompose()
+            text = article.get_text(separator='\n', strip=True)
+            # Gereksiz baslik/menu satirlarini temizle
+            lines = text.split('\n')
+            clean_lines = []
+            skip_patterns = ['Edit this page', 'Last updated on', 'Previous', 'Next',
+                             'Tags:', 'Release notes', 'Moodle 5.', 'Moodle 4.']
+            content_started = False
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # Baslik satiri (Release date iceren) content baslasin
+                if 'Release date' in line:
+                    content_started = True
+                    clean_lines.append(line)
+                    continue
+                if not content_started:
+                    # Ust baslik veya sayfa title'i
+                    if line.startswith('Moodle') and 'Released' not in line and len(line) < 30:
+                        content_started = True
+                    continue
+                # Footer satirlarini atla
+                if any(skip in line for skip in skip_patterns):
+                    continue
+                clean_lines.append(line)
+            result = '\n'.join(clean_lines)
+            result = re.sub(r'\n{3,}', '\n\n', result)
+            if len(result) > 50:
+                print(f"    [Moodle] {version} icin {len(result)} karakter release notes bulundu")
+                return result
+            return ""
+        except Exception as e:
+            print(f"    [Moodle] Release notes cekilemedi ({version}): {e}")
+            return ""
 
     def fetch_entries(self, days: int = 60) -> List[Dict]:
         print(f"[Moodle] Son {days} gunun guncellemeleri cekiliyor...")
@@ -638,8 +834,8 @@ class MoodleScraper(DevToolsScraper):
                         commit_resp = self.session.get(commit_url, timeout=10)
                         if commit_resp.ok:
                             commit_data = commit_resp.json()
-                            date_str = commit_data.get('commit', {}).get('committer', {}).get('date', '')
-                            pub_date = self._parse_rss_date(date_str)
+                            date_str_raw = commit_data.get('commit', {}).get('committer', {}).get('date', '')
+                            pub_date = self._parse_rss_date(date_str_raw)
                     except Exception:
                         pass
 
@@ -650,10 +846,17 @@ class MoodleScraper(DevToolsScraper):
                 date_str = pub_date.strftime('%Y-%m-%d') if pub_date else datetime.now().strftime('%Y-%m-%d')
                 version = tag_name.lstrip('v')
 
+                # moodledev.io'dan gercek release notes cek
+                description = self._fetch_release_notes(version)
+                if not description:
+                    description = f"Moodle {version} has been released. Visit https://moodledev.io/general/releases for details, changelog, and security fixes."
+
+                release_notes_url = f"https://moodledev.io/general/releases/{'.'.join(version.split('.')[:2])}/{version}"
+
                 entries.append({
                     'title': f"Moodle {version} Released",
-                    'description': f"Moodle {version} has been released. Visit the Moodle download page for details, changelog, and system requirements.",
-                    'link': f"https://github.com/moodle/moodle/releases/tag/{tag_name}",
+                    'description': description[:8000],
+                    'link': release_notes_url,
                     'date': date_str,
                     'source': 'Moodle',
                     'version': version,
@@ -695,7 +898,8 @@ class MultiDevToolsScraper(DevToolsScraper):
 
         sources = dict(self.scrapers)
         if selected_sources:
-            sources = {k: v for k, v in sources.items() if k in selected_sources}
+            selected_lower = {s.lower() for s in selected_sources}
+            sources = {k: v for k, v in sources.items() if k.lower() in selected_lower}
 
         per_source_limit = max(5, max_total // max(len(sources), 1))
 
